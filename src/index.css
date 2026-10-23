@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #0d0d0e; color: #f5f3ef; font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select, textarea { font: inherit; }
+button { min-height: 3rem; min-width: 3rem; -webkit-tap-highlight-color: transparent; }
+::selection { background: #d4af37; color: #0d0d0e; }
+@layer utilities { .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); } }
+
+@media print {
+  body * { visibility: hidden !important; }
+  #receipt, #receipt * { visibility: visible !important; }
+  #receipt { position: fixed; inset: 0 auto auto 0; width: 100%; max-width: none; border-radius: 0; }
+  .receipt-shell { position: fixed; inset: 0; width: 100%; max-width: none; padding: 0 !important; border: 0 !important; background: transparent !important; }
+  .no-print { display: none !important; }
+}
