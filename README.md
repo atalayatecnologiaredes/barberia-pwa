@@ -1,5 +1,5 @@
-# Barber Lounge
 
+<<<<<<< HEAD
 Aplicación modular React + Vite para la gestión de una barbería. La autenticación usa Supabase Auth y carga permisos desde `public.profiles`. Los módulos operativos principales consultan y actualizan Supabase; algunos componentes auxiliares todavía conservan estado local o datos de demostración para desarrollo.
 
 ## Configuración local
@@ -40,3 +40,5 @@ El portal QR lee puntos y movimientos guardados en `clients` y `loyalty_ledger`;
 `src/modules/` contiene Auth, Recepción, Chair Station, Checkout, Inventario, PWA Cliente, CRM, Nómina y Analítica. `src/shared/auth/` administra sesión y rutas RBAC. `src/shared/store/useBarberStore.ts` conecta los eventos de los módulos en memoria.
 
 La sesión, agenda, cola, órdenes, caja, inventario, CRM/QR, catálogo, equipo y analítica tienen integración con Supabase en el código. Las muestras de datos aparecen únicamente en ciertos estados vacíos durante desarrollo. Antes de usar el sistema en producción hay que confirmar que la base remota tenga la secuencia correcta de migraciones, validar los flujos con datos reales y terminar la configuración de despliegue y correo. Consulta `DEVELOPMENT_PLAN.md` para el estado y los siguientes pasos.
+=======
+>>>>>>> f9c8f7679e2916846bbff3914bd50e5369f2a96d
