@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Banknote, CalendarDays, Clock3, RefreshCw, Scissors, ShoppingBag, Users, ChevronDown, ChevronUp } from "lucide-react";
+import { Banknote, CalendarDays, Clock3, Package, RefreshCw, ReceiptText, ShoppingBag, Users, ChevronDown, ChevronUp, FileDown, Printer } from "lucide-react";
 import { useAuthStore } from "../../shared/auth/AuthStore";
 import { supabase } from "../../shared/lib/supabaseClient";
 import { errorMessage } from "../../shared/lib/errors";
 import { MetricCard, PageHeading } from "../../shared/ui/PageHeading";
 import { DemoDataBanner } from "../../shared/ui/DemoDataBanner";
 import { useTenantRealtime } from "../../shared/hooks/useTenantRealtime";
+import { hasTenantCapability } from "../../shared/auth/AuthStore";
 
 type RangePreset = "today" | "7" | "30" | "90" | "custom";
 type Payment = { order_id: string; receipt_code: string | null; total: number; subtotal: number; tax: number; tip: number; loyalty_discount: number; completed_at: string };
@@ -14,6 +15,7 @@ type Commission = { order_id: string; barber_id: string; total: number | null };
 type LabelRow = { id: string; name: string };
 type Range = { from: Date; to: Date; previousFrom: Date; previousTo: Date; label: string };
 type RankingMode = "amount" | "count";
+type DailyPoint = { date: string; current: number; previous: number };
 const money = (n: number) => new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD" }).format(n);
 const dateInputValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const localDate = (date: Date) => new Intl.DateTimeFormat("es-EC", { day: "numeric", month: "short", year: "numeric" }).format(date);
@@ -58,7 +60,8 @@ function dateLabel(key: string) {
 }
 
 export default function AnalyticsPage() {
-  const tenantId = useAuthStore((s) => s.session?.user.tenantId);
+  const session = useAuthStore((s) => s.session);
+  const tenantId = session?.user.tenantId;
   const [preset, setPreset] = useState<RangePreset>("7");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -156,7 +159,7 @@ export default function AnalyticsPage() {
     const serviceById = new Map(services.map((s) => [s.id, s.name]));
     const barberById = new Map(barbers.map((b) => [b.id, b.name]));
     const orderById = new Map(orders.map((o) => [o.id, o]));
-    const commissionByOrderId = new Map(commissions.map((commission) => [commission.order_id, commission.total ?? 0]));
+    const commissionByOrderAndBarber = new Map(commissions.map((commission) => [`${commission.order_id}:${commission.barber_id}`, commission.total ?? 0]));
     const matchesFilters = (payment: Payment) => {
       const order = orderById.get(payment.order_id);
       return (!barberFilter || order?.barber_id === barberFilter) && (!serviceFilter || order?.service_id === serviceFilter);
@@ -170,14 +173,25 @@ export default function AnalyticsPage() {
     const tips = visiblePayments.reduce((sum, p) => sum + Number(p.tip), 0);
     const discounts = visiblePayments.reduce((sum, p) => sum + Number(p.loyalty_discount ?? 0), 0);
     const days = new Map<string, number>();
+    const previousDays = new Map<string, number>();
     for (const payment of visiblePayments) {
       const key = dateKey(payment.completed_at);
       days.set(key, (days.get(key) ?? 0) + Number(payment.total));
     }
+    for (const payment of visiblePreviousPayments) {
+      const key = dateKey(payment.completed_at);
+      previousDays.set(key, (previousDays.get(key) ?? 0) + Number(payment.total));
+    }
+    const daily: DailyPoint[] = [];
     if (range) {
-      for (let date = new Date(range.from); date < range.to; date.setDate(date.getDate() + 1)) {
-        const key = dateInputValue(date);
-        if (!days.has(key)) days.set(key, 0);
+      const dayCount = Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000);
+      for (let index = 0; index < dayCount; index++) {
+        const currentDate = new Date(range.from);
+        currentDate.setDate(currentDate.getDate() + index);
+        const previousDate = new Date(range.previousFrom);
+        previousDate.setDate(previousDate.getDate() + index);
+        const currentKey = dateInputValue(currentDate);
+        daily.push({ date: currentKey, current: days.get(currentKey) ?? 0, previous: previousDays.get(dateInputValue(previousDate)) ?? 0 });
       }
     }
     const top = (key: "service_id" | "barber_id") => {
@@ -190,7 +204,7 @@ export default function AnalyticsPage() {
         entry.count++;
         const serviceAmount = Math.max(0, Number(order.service_price) - Number(order.loyalty_discount ?? 0));
         entry.amount += serviceAmount;
-        if (key === "barber_id") entry.commission = (entry.commission ?? 0) + Number(commissionByOrderId.get(payment.order_id) ?? 0);
+        if (key === "barber_id") entry.commission = (entry.commission ?? 0) + Number(commissionByOrderAndBarber.get(`${payment.order_id}:${id}`) ?? 0);
         totals.set(id, entry);
       });
       return [...totals.entries()].map(([id, value]) => ({
@@ -207,7 +221,7 @@ export default function AnalyticsPage() {
     return {
       total, previousTotal, change, discounts, subtotal, tax, tips, paymentCount: visiblePayments.length, details,
       average: visiblePayments.length ? total / visiblePayments.length : 0,
-      daily: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      daily,
       topServices: top("service_id"), topBarbers: top("barber_id"),
     };
   }, [payments, previousPayments, orders, commissions, services, barbers, range, rankingMode, barberFilter, serviceFilter]);
@@ -216,14 +230,48 @@ export default function AnalyticsPage() {
   const demoMetrics = {
     ...metrics, total: 642.5, average: 32.13, change: 12.4, discounts: 18, paymentCount: 20,
     subtotal: 558.7, tax: 83.8, tips: 0,
-    daily: [["2026-10-15", 84], ["2026-10-16", 126.5], ["2026-10-17", 97], ["2026-10-18", 168], ["2026-10-19", 167]] as [string, number][],
+    daily: metrics.daily.map((point, index) => ({ ...point, current: [84, 126.5, 97, 168, 167, 0, 0][index % 7], previous: [75, 102, 110, 120, 132, 80, 70][index % 7] })),
     topServices: [{ id: "demo-cut", name: "Corte clásico", count: 9, amount: 180 }, { id: "demo-beard", name: "Corte + barba", count: 6, amount: 210 }, { id: "demo-fade", name: "Fade", count: 5, amount: 125 }],
     topBarbers: [{ id: "demo-barber-1", name: "Mateo Rivera", count: 11, amount: 354, commission: 177 }, { id: "demo-barber-2", name: "Andrés Vera", count: 9, amount: 288.5, commission: 144.25 }],
   };
   const shown = demoMode ? demoMetrics : metrics;
-  const daily = shown.daily as [string, number][];
+  const daily = shown.daily as DailyPoint[];
   const rankRows = (rows: { id: string; name: string; count: number; amount: number }[]) => rows.map((row) => ({ ...row, amount: rankingMode === "amount" ? row.amount : row.count }));
   const rangeValid = !!range;
+
+  async function exportReport(fileFormat: "csv" | "pdf") {
+    if (!tenantId || !session?.user.id || !hasTenantCapability(session, "exports") || !range) return;
+    const { error: auditError } = await supabase.from("report_export_audit").insert({
+      tenant_id: tenantId,
+      profile_id: session.user.id,
+      report_key: "analytics_payments",
+      file_format: fileFormat,
+      date_from: dateInputValue(range.from),
+      date_to: dateInputValue(new Date(range.to.getTime() - 1)),
+    });
+    if (auditError) {
+      setError(`No se pudo registrar la exportación: ${auditError.message}`);
+      return;
+    }
+    if (fileFormat === "pdf") {
+      window.print();
+      return;
+    }
+    const columns = ["fecha", "recibo", "servicio", "barbero", "subtotal", "impuesto", "propina", "total"];
+    const rows = shown.details.map((payment) => [payment.completed_at, payment.receipt_code ?? payment.order_id.slice(0, 8), payment.service, payment.barber, payment.subtotal, payment.tax, payment.tip, payment.total]);
+    const csvCell = (value: string | number) => {
+      const raw = String(value);
+      const safe = /^[\t\r =+\-@]/.test(raw) ? `'${raw}` : raw;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const csv = [columns, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `barber-lounge-ventas-${dateInputValue(range.from)}-${dateInputValue(new Date(range.to.getTime() - 1))}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return <div className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-8">
     <PageHeading eyebrow="Vista gerencial" title="Analítica" description="Revisa cobros, descuentos y actividad del equipo para el periodo elegido." action={<div className="flex flex-wrap items-center gap-2">
@@ -231,6 +279,7 @@ export default function AnalyticsPage() {
       <select id="analytics-range" aria-label="Periodo" value={preset} onChange={(event) => setPreset(event.target.value as RangePreset)} className="min-h-11 rounded-xl border border-line bg-panel px-3 text-sm">
         <option value="today">Hoy</option><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="90">Últimos 90 días</option><option value="custom">Personalizado</option>
       </select>
+      {hasTenantCapability(session, "exports") && <><button onClick={() => void exportReport("csv")} disabled={loading || !range || demoMode} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-panel px-3 text-sm disabled:opacity-50"><FileDown size={15}/>CSV / Excel</button><button onClick={() => void exportReport("pdf")} disabled={loading || !range || demoMode} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-panel px-3 text-sm disabled:opacity-50"><Printer size={15}/>PDF</button></>}
       <button onClick={refresh} disabled={loading} className="grid min-h-11 w-11 place-items-center rounded-xl border border-line disabled:opacity-50" aria-label="Actualizar" title="Actualizar"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/></button>
     </div>}/>
     {preset === "custom" && <section className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel p-4">
@@ -244,14 +293,14 @@ export default function AnalyticsPage() {
     <section aria-label="Resumen del periodo" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label="Total cobrado" value={loading ? "…" : money(shown.total)} detail="Incluye servicios, productos e impuestos; resta descuentos." icon={Banknote} color="text-electric"/>
       <MetricCard label="Ticket promedio" value={loading ? "…" : money(shown.average)} detail={`${shown.paymentCount} pagos confirmados en el periodo`} icon={ShoppingBag}/>
-      <MetricCard label="Descuentos aplicados" value={loading ? "…" : money(shown.discounts)} detail="Fidelidad y canjes contabilizados al cobrar" icon={Scissors}/>
+      <MetricCard label="Pagos confirmados" value={loading ? "…" : String(shown.paymentCount)} detail="Transacciones completadas en el periodo" icon={ReceiptText}/>
       <article className="rounded-2xl border border-line bg-panel p-4 md:p-5"><div className="flex items-center justify-between"><span className="text-sm text-muted">Vs. periodo anterior</span><CalendarDays size={18} className="text-brass"/></div><p className="mt-4 text-2xl font-bold tabular-nums">{loading ? "…" : shown.change === null ? "—" : `${shown.change > 0 ? "+" : ""}${shown.change.toFixed(1)}%`}</p><p className="mt-1 text-xs text-muted">{shown.change === null ? "Sin cobros previos para comparar" : `${money(shown.previousTotal)} cobrados en el periodo anterior`}</p></article>
     </section>
-    <section aria-label="Estado operativo" className="grid gap-3 sm:grid-cols-2"><MetricCard label="Órdenes en caja" value={loading ? "…" : String(demoMode ? 3 : pending)} detail="Ahora · servicios finalizados por cobrar" icon={Users}/><MetricCard label="Stock bajo" value={loading ? "…" : String(demoMode ? 2 : lowStock)} detail="Ahora · artículos en o bajo su mínimo" icon={Scissors} color="text-warning"/></section>
-    <details className="group rounded-xl border border-line bg-panel px-4 py-3"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium"><span>Desglose del total cobrado</span><span className="text-xs text-muted">{money(shown.subtotal)} subtotal · {money(shown.tax)} impuestos · {money(shown.tips)} propinas</span></summary><p className="mt-2 text-xs leading-5 text-muted">El subtotal es neto después de descuentos e incluye servicios y productos. El total cobrado se compone de subtotal, impuestos y propinas.</p></details>
+    <section aria-label="Estado operativo" className="grid gap-3 sm:grid-cols-2"><MetricCard label="Órdenes en caja" value={loading ? "…" : String(demoMode ? 3 : pending)} detail="Ahora · servicios finalizados por cobrar" icon={Users}/><MetricCard label="Stock bajo" value={loading ? "…" : String(demoMode ? 2 : lowStock)} detail="Ahora · artículos en o bajo su mínimo" icon={Package} color="text-warning"/></section>
+    <details className="group rounded-xl border border-line bg-panel px-4 py-3"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium"><span>Composición de cobros</span><span className="text-xs text-muted">Abrir desglose</span></summary><div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4"><Breakdown label="Subtotal neto" value={money(shown.subtotal)}/><Breakdown label="Impuestos" value={money(shown.tax)}/><Breakdown label="Propinas" value={money(shown.tips)}/><Breakdown label="Descuentos" value={money(shown.discounts)}/></div><p className="mt-3 text-xs leading-5 text-muted">El subtotal ya descuenta fidelidad y canjes. El total cobrado incluye subtotal, impuestos y propinas.</p></details>
     <section aria-label="Filtros de análisis" className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="analytics-barber">Filtrar barbero</label><select id="analytics-barber" value={barberFilter} onChange={(event) => setBarberFilter(event.target.value)} className="min-h-10 rounded-lg border border-line bg-panel px-3 text-sm"><option value="">Todos los barberos</option>{barbers.map((barber) => <option key={barber.id} value={barber.id}>{barber.name}</option>)}</select><label className="sr-only" htmlFor="analytics-service">Filtrar servicio</label><select id="analytics-service" value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="min-h-10 rounded-lg border border-line bg-panel px-3 text-sm"><option value="">Todos los servicios</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>{(barberFilter || serviceFilter) && <button onClick={() => { setBarberFilter(""); setServiceFilter(""); }} className="min-h-10 rounded-lg px-3 text-xs text-muted underline">Limpiar filtros</button>}</section>
     <section className="grid gap-5 xl:grid-cols-2">
-      <article className="rounded-2xl border border-line bg-panel p-5"><h2 className="text-lg font-semibold">Cobros por día</h2><p className="mt-1 text-xs text-muted">Total pagado por fecha · USD</p>{daily.length ? <div className="mt-6 space-y-3">{daily.map(([day, value]) => <div key={day} className="grid grid-cols-[6rem_1fr_auto] items-center gap-3 text-sm"><span className="text-muted">{dateLabel(day)}</span><div className="h-2 overflow-hidden rounded bg-white/5"><div className="h-full rounded bg-brass" style={{ width: `${Math.max(1, value / Math.max(1, ...daily.map((entry) => entry[1])) * 100)}%` }}/></div><b>{money(value)}</b></div>)}</div> : <Empty loading={loading} text="Todavía no hay pagos en este periodo."/>}</article>
+      <article className="rounded-2xl border border-line bg-panel p-5"><h2 className="text-lg font-semibold">Tendencia de cobros</h2><p className="mt-1 text-xs text-muted">Compara cada día con el periodo equivalente anterior · USD</p>{daily.length ? <RevenueChart points={daily} loading={loading}/> : <Empty loading={loading} text="Todavía no hay pagos en este periodo."/>}</article>
       <article className="rounded-2xl border border-line bg-panel p-5"><RankingHeader title="Servicios más vendidos" mode={rankingMode} onModeChange={setRankingMode}/><p className="mt-1 text-xs text-muted">Monto neto del servicio tras descuentos, o cantidad de órdenes cobradas.</p>{shown.topServices.length ? <Rows rows={rankRows(shown.topServices)} mode={rankingMode}/> : <Empty loading={loading} text="Los servicios aparecerán cuando se registren cobros."/>}</article>
     </section>
     <section className="rounded-2xl border border-line bg-panel p-5"><RankingHeader title="Rendimiento por barbero" mode={rankingMode} onModeChange={setRankingMode}/><p className="mt-1 text-xs text-muted">Monto neto de los servicios atendidos; la comisión es un dato separado.</p>{shown.topBarbers.length ? <Rows rows={rankRows(shown.topBarbers)} mode={rankingMode} showCommission/> : <Empty loading={loading} text="El rendimiento aparecerá cuando se registren cobros."/>}</section>
@@ -259,6 +308,34 @@ export default function AnalyticsPage() {
   </div>;
 }
 
+function RevenueChart({ points, loading }: { points: DailyPoint[]; loading: boolean }) {
+  const width = 760;
+  const height = 220;
+  const padding = { left: 42, right: 12, top: 12, bottom: 34 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const max = Math.max(1, ...points.flatMap((point) => [point.current, point.previous]));
+  const coordinates = (value: number, index: number) => ({
+    x: padding.left + (points.length < 2 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth),
+    y: padding.top + plotHeight - (value / max) * plotHeight,
+  });
+  const currentLine = points.map((point, index) => { const { x, y } = coordinates(point.current, index); return `${x},${y}`; }).join(" ");
+  const previousLine = points.map((point, index) => { const { x, y } = coordinates(point.previous, index); return `${x},${y}`; }).join(" ");
+  const labels = points.filter((_, index) => index === 0 || index === points.length - 1 || index % Math.max(1, Math.ceil(points.length / 5)) === 0);
+  return <div className="mt-4">
+    <div className="mb-3 flex flex-wrap gap-4 text-xs"><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-brass"/>Periodo actual</span><span className="flex items-center gap-2 text-muted"><i className="h-2.5 w-2.5 rounded-full bg-electric"/>Periodo anterior</span></div>
+    <div className="overflow-x-auto"><svg role="img" aria-label="Comparación de cobros diarios con el periodo anterior" viewBox={`0 0 ${width} ${height}`} className="h-56 min-w-[560px] w-full" preserveAspectRatio="none">
+      {[0, 0.5, 1].map((ratio) => { const y = padding.top + plotHeight * ratio; return <g key={ratio}><line x1={padding.left} y1={y} x2={width-padding.right} y2={y} className="stroke-line" strokeWidth="1"/><text x={padding.left-8} y={y+4} textAnchor="end" fontSize="10" className="fill-muted">{money(max*(1-ratio))}</text></g>; })}
+      {points.length > 1 && <><polyline points={previousLine} fill="none" className="stroke-electric" strokeWidth="2" strokeDasharray="5 5"/><polyline points={currentLine} fill="none" className="stroke-brass" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/></>}
+      {points.map((point,index)=>{const current=coordinates(point.current,index);const previous=coordinates(point.previous,index);return <g key={point.date}><circle cx={current.x} cy={current.y} r="3.5" className="fill-brass"><title>{dateLabel(point.date)}: {money(point.current)}</title></circle>{points.length===1&&<circle cx={previous.x} cy={previous.y} r="3.5" className="fill-electric"/>}</g>;})}
+      {labels.map((point)=>{const index=points.indexOf(point);const {x}=coordinates(0,index);return <text key={point.date} x={x} y={height-8} textAnchor="middle" fontSize="10" className="fill-muted">{point.date.slice(5)}</text>;})}
+    </svg></div>
+    {loading && <p className="mt-2 text-xs text-muted">Actualizando cobros…</p>}
+  </div>;
+}
+function Breakdown({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border border-line/70 px-3 py-2"><span className="block text-xs text-muted">{label}</span><b className="mt-1 block tabular-nums">{value}</b></div>;
+}
 function RankingHeader({ title, mode, onModeChange }: { title: string; mode: RankingMode; onModeChange: (mode: RankingMode) => void }) {
   return <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{title}</h2><div role="group" aria-label={`Ordenar ${title.toLowerCase()} por`} className="flex rounded-lg border border-line p-1 text-xs"><button aria-pressed={mode === "amount"} onClick={() => onModeChange("amount")} className={`min-h-8 rounded-md px-3 ${mode === "amount" ? "bg-brass text-obsidian" : "text-muted"}`}>Monto</button><button aria-pressed={mode === "count"} onClick={() => onModeChange("count")} className={`min-h-8 rounded-md px-3 ${mode === "count" ? "bg-brass text-obsidian" : "text-muted"}`}>Cantidad</button></div></div>;
 }

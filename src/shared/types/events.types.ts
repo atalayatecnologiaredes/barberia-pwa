@@ -8,6 +8,7 @@ export interface ServiceOrder {
   servicePrice: number; lines: OrderLine[]; status: "in-service" | "ready-for-checkout" | "paid";
 }
 export type PaymentMethod = "card" | "cash" | "mobile-transfer" | "loyalty" | "split";
+export type LoyaltyRewardType = "free_service" | "fixed_service_discount" | "percent_service_discount";
 export interface CompletedPayment {
   orderId: string; order: ServiceOrder; customer: Guest; subtotal: number; tax: number;
   tip: number; total: number; method: PaymentMethod; completedAt: string;

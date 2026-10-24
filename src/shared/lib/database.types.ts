@@ -519,6 +519,60 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          action_path: string | null
+          created_at: string
+          entity_id: string | null
+          event_type: string
+          id: string
+          message: string
+          read_at: string | null
+          recipient_id: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          action_path?: string | null
+          created_at?: string
+          entity_id?: string | null
+          event_type: string
+          id?: string
+          message: string
+          read_at?: string | null
+          recipient_id: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          action_path?: string | null
+          created_at?: string
+          entity_id?: string | null
+          event_type?: string
+          id?: string
+          message?: string
+          read_at?: string | null
+          recipient_id?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       loyalty_ledger: {
         Row: {
           client_id: string
@@ -626,34 +680,49 @@ export type Database = {
           },
         ]
       }
+      loyalty_program_rules: {
+        Row: { id: string; tenant_id: string; points_per_dollar: number; effective_at: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; tenant_id: string; points_per_dollar?: number; effective_at: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; tenant_id?: string; points_per_dollar?: number; effective_at?: string; created_by?: string | null; created_at?: string }
+        Relationships: [{ foreignKeyName: "loyalty_program_rules_tenant_id_fkey"; columns: ["tenant_id"]; isOneToOne: false; referencedRelation: "tenants"; referencedColumns: ["id"] }]
+      }
       loyalty_rewards: {
         Row: {
           active: boolean
+          archived_at: string | null
           created_at: string
           description: string
           id: string
           name: string
           points_cost: number
+          reward_type: "free_service" | "fixed_service_discount" | "percent_service_discount"
+          reward_value: number
           tenant_id: string
           updated_at: string
         }
         Insert: {
           active?: boolean
+          archived_at?: string | null
           created_at?: string
           description?: string
           id?: string
           name: string
           points_cost: number
+          reward_type?: "free_service" | "fixed_service_discount" | "percent_service_discount"
+          reward_value?: number
           tenant_id: string
           updated_at?: string
         }
         Update: {
           active?: boolean
+          archived_at?: string | null
           created_at?: string
           description?: string
           id?: string
           name?: string
           points_cost?: number
+          reward_type?: "free_service" | "fixed_service_discount" | "percent_service_discount"
+          reward_value?: number
           tenant_id?: string
           updated_at?: string
         }
@@ -973,6 +1042,54 @@ export type Database = {
           },
         ]
       }
+      report_export_audit: {
+        Row: {
+          created_at: string
+          date_from: string
+          date_to: string
+          file_format: string
+          id: string
+          profile_id: string
+          report_key: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          date_from: string
+          date_to: string
+          file_format: string
+          id?: string
+          profile_id: string
+          report_key: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          date_from?: string
+          date_to?: string
+          file_format?: string
+          id?: string
+          profile_id?: string
+          report_key?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_export_audit_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_export_audit_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restock_requests: {
         Row: {
           barber_id: string | null
@@ -1069,6 +1186,99 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saas_settings: {
+        Row: {
+          billing_period_months: number
+          exports_enabled_during_trial: boolean
+          grace_days: number
+          monthly_price: number
+          singleton: boolean
+          telegram_url: string | null
+          trial_days: number
+          updated_at: string
+          updated_by: string | null
+          whatsapp_number: string
+        }
+        Insert: {
+          billing_period_months?: number
+          exports_enabled_during_trial?: boolean
+          grace_days?: number
+          monthly_price?: number
+          singleton?: boolean
+          telegram_url?: string | null
+          trial_days?: number
+          updated_at?: string
+          updated_by?: string | null
+          whatsapp_number?: string
+        }
+        Update: {
+          billing_period_months?: number
+          exports_enabled_during_trial?: boolean
+          grace_days?: number
+          monthly_price?: number
+          singleton?: boolean
+          telegram_url?: string | null
+          trial_days?: number
+          updated_at?: string
+          updated_by?: string | null
+          whatsapp_number?: string
+        }
+        Relationships: []
+      }
+      subscription_payment_records: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          notes: string | null
+          payment_method: string
+          period_ends_at: string
+          period_starts_at: string
+          recorded_by: string
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          payment_method: string
+          period_ends_at: string
+          period_starts_at: string
+          recorded_by: string
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          period_ends_at?: string
+          period_starts_at?: string
+          recorded_by?: string
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_payment_records_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_payment_records_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1322,8 +1532,13 @@ export type Database = {
       }
       staff_shifts: {
         Row: {
+          absence_marked_at: string | null
+          absence_marked_by: string | null
+          absence_reason: string
           checked_in_at: string | null
           checked_out_at: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           ends_at: string
           id: string
           notes: string
@@ -1331,8 +1546,13 @@ export type Database = {
           starts_at: string
         }
         Insert: {
+          absence_marked_at?: string | null
+          absence_marked_by?: string | null
+          absence_reason?: string
           checked_in_at?: string | null
           checked_out_at?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           ends_at: string
           id?: string
           notes?: string
@@ -1340,8 +1560,13 @@ export type Database = {
           starts_at: string
         }
         Update: {
+          absence_marked_at?: string | null
+          absence_marked_by?: string | null
+          absence_reason?: string
           checked_in_at?: string | null
           checked_out_at?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           ends_at?: string
           id?: string
           notes?: string
@@ -1429,6 +1654,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_record_subscription_payment: {
+        Args: {
+          p_complimentary?: boolean
+          p_notes?: string | null
+          p_payment_method: string
+          p_reference?: string | null
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       adjust_client_loyalty_points: {
         Args: { p_client_id: string; p_points: number; p_reason: string }
         Returns: number
@@ -1454,6 +1689,9 @@ export type Database = {
         Args: { p_appointment_id: string }
         Returns: undefined
       }
+      cancel_staff_shift: { Args: { p_shift_id: string }; Returns: undefined }
+      mark_staff_shift_absent: { Args: { p_reason?: string; p_shift_id: string }; Returns: undefined }
+      cancel_scheduled_loyalty_rule: { Args: { p_rule_id: string }; Returns: undefined }
       check_in_appointment: {
         Args: { p_appointment_id: string }
         Returns: string
@@ -1517,6 +1755,7 @@ export type Database = {
         Args: { p_email?: string; p_full_name: string; p_phone: string }
         Returns: Json
       }
+      delete_or_archive_loyalty_reward: { Args: { p_reward_id: string }; Returns: string }
       create_inventory_item: {
         Args: {
           p_category: Database["public"]["Enums"]["stock_category"]
@@ -1565,6 +1804,7 @@ export type Database = {
         Returns: undefined
       }
       read_client_loyalty: { Args: { p_token: string }; Returns: Json }
+      schedule_loyalty_rule: { Args: { p_effective_at: string; p_points_per_dollar: number }; Returns: string }
       revoke_client_qr: { Args: { p_client_id: string }; Returns: undefined }
       set_checkout_product_quantity: {
         Args: { p_item_id: string; p_order_id: string; p_quantity: number }
@@ -1578,6 +1818,15 @@ export type Database = {
         Args: {
           p_status: Database["public"]["Enums"]["queue_status"]
           p_visit_id: string
+        }
+        Returns: undefined
+      }
+      update_staff_shift: {
+        Args: {
+          p_ends_at: string
+          p_notes?: string
+          p_shift_id: string
+          p_starts_at: string
         }
         Returns: undefined
       }

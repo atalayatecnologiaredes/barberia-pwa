@@ -73,7 +73,7 @@ export default function RegisterTenantPage() {
         {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
         {success && <p role="status" className="rounded-xl border border-electric/30 bg-electric/10 p-3 text-sm text-green-200">{success} <Link className="font-semibold underline" to="/login">Ir al acceso</Link></p>}
         <button disabled={busy} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-brass px-5 font-bold text-obsidian transition hover:bg-[#e4c454] disabled:cursor-wait disabled:opacity-60">{busy ? "Creando cuenta…" : <>Crear cuenta <ArrowRight size={17}/></>}</button>
-        <p className="text-center text-xs leading-5 text-muted">El plan Básico incluye un periodo de prueba de 14 días. No se realiza ningún cobro al registrarte.</p>
+        <p className="text-center text-xs leading-5 text-muted">Incluye un periodo de prueba configurable. No se realiza ningún cobro al registrarte.</p>
       </form>
     </div>
   </main>;

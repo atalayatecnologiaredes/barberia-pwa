@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { Link } from "react-router-dom";
 import { Camera, ChevronRight, Clock3, Gift, Plus, Search, Star, UserRound, X } from "lucide-react";
 import { supabase } from "../../shared/lib/supabaseClient";
 import { PageHeading } from "../../shared/ui/PageHeading";
@@ -18,7 +19,7 @@ interface ClientRecord {
   technical_notes: string;
   email: string | null;
 }
-interface LoyaltyReward { id: string; name: string; description: string; points_cost: number; active: boolean; }
+interface LoyaltyRule { id: string; points_per_dollar: number; effective_at: string; }
 
 export default function CrmPage() {
   const tenantId = useAuthStore((state) => state.session?.user.tenantId);
@@ -33,10 +34,7 @@ export default function CrmPage() {
   const [adjustmentReason, setAdjustmentReason] = useState("");
   const [adjustmentPoints, setAdjustmentPoints] = useState("");
   const [movementHistory, setMovementHistory] = useState<{ id: string; points: number; entry_type: string; description: string; created_at: string }[]>([]);
-  const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
-  const [rewardName, setRewardName] = useState("");
-  const [rewardDescription, setRewardDescription] = useState("");
-  const [rewardCost, setRewardCost] = useState("");
+  const [loyaltyRules, setLoyaltyRules] = useState<LoyaltyRule[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const role = useAuthStore((state) => state.session?.user.role);
   const isOwner = role === "SUPER_ADMIN";
@@ -57,14 +55,13 @@ export default function CrmPage() {
 
   useEffect(() => { void loadClients(false); }, [loadClients]);
 
-  const loadRewards = useCallback(async () => {
+  const loadLoyaltyRules = useCallback(async () => {
     if (!tenantId) return;
-    const { data, error: rewardsError } = await supabase.from("loyalty_rewards")
-      .select("id, name, description, points_cost, active").eq("tenant_id", tenantId).order("name");
-    if (rewardsError) setError(rewardsError.message);
-    else setRewards(data ?? []);
+    const { data, error: rulesError } = await supabase.from("loyalty_program_rules").select("id,points_per_dollar,effective_at").eq("tenant_id", tenantId).order("effective_at");
+    if (rulesError) setError(rulesError.message);
+    else setLoyaltyRules(data ?? []);
   }, [tenantId]);
-  useEffect(() => { void loadRewards(); }, [loadRewards]);
+  useEffect(() => { void loadLoyaltyRules(); }, [loadLoyaltyRules]);
 
   const loadMovementHistory = useCallback(async (clientId: string) => {
     setHistoryLoading(true);
@@ -78,10 +75,10 @@ export default function CrmPage() {
 
   const refreshCrm = useCallback(() => {
     void loadClients();
-    void loadRewards();
+    void loadLoyaltyRules();
     if (selectedId) void loadMovementHistory(selectedId);
-  }, [loadClients, loadRewards, loadMovementHistory, selectedId]);
-  useTenantRealtime(tenantId, [{ table: "clients" }, { table: "loyalty_ledger", tenantColumn: null }, { table: "loyalty_rewards" }], refreshCrm);
+  }, [loadClients, loadLoyaltyRules, loadMovementHistory, selectedId]);
+  useTenantRealtime(tenantId, [{ table: "clients" }, { table: "loyalty_ledger", tenantColumn: null }, { table: "loyalty_program_rules" }], refreshCrm);
 
   const demoMode = import.meta.env.DEV && !loading && !error && clients.length === 0;
   const demoClients: ClientRecord[] = [
@@ -92,6 +89,7 @@ export default function CrmPage() {
   const shownClients = demoMode ? demoClients : clients;
   const filtered = useMemo(() => shownClients.filter((client) => `${client.full_name} ${client.phone} ${client.id}`.toLowerCase().includes(query.toLowerCase())), [shownClients, query]);
   const selected = shownClients.find((client) => client.id === selectedId) ?? filtered[0] ?? null;
+  const currentLoyaltyRule = [...loyaltyRules].reverse().find((rule) => new Date(rule.effective_at).getTime() <= Date.now());
 
   useEffect(() => {
     if (!selected || demoMode) { setMovementHistory([]); return; }
@@ -160,37 +158,13 @@ export default function CrmPage() {
     await Promise.all([loadClients(), loadMovementHistory(selected.id)]);
   }
 
-  async function saveReward(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!tenantId || busy) return;
-    const cost = Number(rewardCost);
-    if (!Number.isInteger(cost) || cost <= 0) { setError("El costo debe ser un número entero de puntos mayor que cero."); return; }
-    setBusy(true); setError("");
-    const { data, error: saveError } = await supabase.from("loyalty_rewards").insert({
-      tenant_id: tenantId, name: rewardName.trim(), description: rewardDescription.trim(), points_cost: cost,
-    }).select("id, name, description, points_cost, active").single();
-    setBusy(false);
-    if (saveError) { setError(saveError.message); return; }
-    setRewards((current) => [...current, data as LoyaltyReward].sort((a, b) => a.name.localeCompare(b.name)));
-    setRewardName(""); setRewardDescription(""); setRewardCost("");
-  }
-
-  async function toggleReward(reward: LoyaltyReward) {
-    if (!tenantId) { setError("El usuario no está asignado a una barbería."); return; }
-    setBusy(true); setError("");
-    const { error: updateError } = await supabase.from("loyalty_rewards").update({ active: !reward.active }).eq("id", reward.id).eq("tenant_id", tenantId);
-    setBusy(false);
-    if (updateError) setError(updateError.message);
-    else setRewards((current) => current.map((item) => item.id === reward.id ? { ...item, active: !item.active } : item));
-  }
-
   return <div className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-8"><PageHeading eyebrow="Relación con clientes" title="CRM de clientes" description="Consulta las fichas reales y entrega una tarjeta QR personal para fidelización." action={<button onClick={() => { setError(""); setShowNewClient(true); }} className="flex min-h-12 items-center gap-2 rounded-xl bg-brass px-4 text-sm font-bold text-obsidian"><Plus size={17}/>Nuevo cliente</button>}/>
     <DemoDataBanner active={demoMode}/>
     {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</p>}
-    <section className="rounded-2xl border border-line bg-panel p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-brass">Programa de fidelidad</p><h2 className="mt-1 text-lg font-semibold">Recompensas</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-muted">Regla vigente: se gana 1 punto por cada dólar pagado. La recompensa se entrega en Caja al completar un cobro; no descuenta dinero de la orden.</p></div><span className="rounded-full border border-line px-3 py-1.5 text-xs text-muted">{rewards.filter((reward) => reward.active).length} activas</span></div>{isOwner && <form onSubmit={(event) => void saveReward(event)} className="mt-4 grid gap-3 rounded-xl border border-line bg-obsidian p-4 sm:grid-cols-[1fr_1.3fr_.55fr_auto]"><label className="text-xs text-muted">Nombre<input required minLength={2} maxLength={100} value={rewardName} onChange={(event) => setRewardName(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3 text-sm text-white" placeholder="Lavado gratis"/></label><label className="text-xs text-muted">Descripción<input maxLength={300} value={rewardDescription} onChange={(event) => setRewardDescription(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3 text-sm text-white" placeholder="Canjeable por un lavado clásico"/></label><label className="text-xs text-muted">Costo en puntos<input required type="number" min="1" step="1" value={rewardCost} onChange={(event) => setRewardCost(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3 text-sm text-white" placeholder="100"/></label><button disabled={busy} className="mt-auto min-h-11 rounded-lg bg-brass px-4 text-xs font-bold text-obsidian disabled:opacity-50">Crear</button></form>}<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rewards.map((reward) => <article key={reward.id} className="flex items-center gap-3 rounded-xl border border-line bg-obsidian p-3"><Gift size={18} className="shrink-0 text-brass"/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{reward.name} · {reward.points_cost} pts</p><p className="truncate text-xs text-muted">{reward.description || "Sin descripción"}</p></div>{isOwner && <button type="button" disabled={busy} onClick={() => void toggleReward(reward)} className={`rounded-lg border px-2.5 py-2 text-[11px] font-semibold ${reward.active ? "border-electric/20 text-electric" : "border-line text-muted"}`}>{reward.active ? "Activa" : "Inactiva"}</button>}</article>)}{!rewards.length && <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">Aún no hay recompensas configuradas.</p>}</div></section>
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-panel p-4"><div><p className="text-xs font-bold uppercase tracking-[.15em] text-brass">Programa de fidelidad</p><p className="mt-1 text-sm">{currentLoyaltyRule ? `${Number(currentLoyaltyRule.points_per_dollar).toLocaleString("es-EC")} punto(s) por dólar sobre el subtotal neto.` : "Cargando regla vigente…"}<span className="text-muted"> Los saldos e historiales se consultan en cada ficha.</span></p></div>{isOwner && <Link to="/admin/settings" className="min-h-10 rounded-lg border border-line px-3 py-2 text-xs font-semibold text-brass">Administrar programa</Link>}</section>
     <div className="grid items-start gap-5 xl:grid-cols-[.8fr_1.2fr]"><section className="rounded-2xl border border-line bg-panel p-4 md:p-5"><label className="flex min-h-12 items-center gap-2 rounded-xl border border-line bg-obsidian px-3 text-muted"><Search size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nombre, teléfono o ID" className="w-full bg-transparent text-sm text-stone-100 outline-none placeholder:text-muted"/></label><div className="mt-3 flex items-center justify-between px-1 text-xs text-muted"><span>{query.trim() ? "Resultados" : "Clientes"}</span><span>{filtered.length} {filtered.length === 1 ? "registro" : "registros"}</span></div><div aria-label="Lista de clientes" className="mt-2 max-h-[25rem] space-y-2 overflow-y-auto overscroll-contain pr-1 md:max-h-[30rem]">{loading ? <p className="p-4 text-sm text-muted">Cargando clientes…</p> : filtered.map((client) => <button key={client.id} onClick={() => { setSelectedId(client.id); setQrUrl(""); }} className={`flex min-h-[76px] w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected?.id === client.id ? "border-brass/30 bg-brass/[.04]" : "border-transparent hover:border-line hover:bg-white/[.025]"}`}><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brass/10 text-sm font-bold text-brass">{client.full_name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{client.full_name}</span><span className="mt-1 block truncate text-xs text-muted">{client.phone} · {client.visit_count} visitas</span></span><ChevronRight size={17} className="text-muted"/></button>)}{!loading && !filtered.length && <p className="p-4 text-sm text-muted">No hay clientes que coincidan con la búsqueda.</p>}</div></section>
       {selected ? <article className="rounded-2xl border border-line bg-panel p-5 md:p-7"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-4"><div className="grid h-16 w-16 place-items-center rounded-2xl bg-brass/10 text-xl font-bold text-brass">{selected.full_name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</div><div><p className="text-xs font-semibold uppercase tracking-[.17em] text-brass">Cliente {selected.tier} · {selected.id}</p><h2 className="mt-1 text-2xl font-semibold">{selected.full_name}</h2><p className="mt-1 text-sm text-muted">{selected.phone}{selected.email ? ` · ${selected.email}` : ""}</p></div></div><span className="flex items-center gap-1 rounded-full bg-brass/10 px-3 py-2 text-xs font-bold text-brass"><Star size={13} fill="currentColor"/>{selected.tier}</span></div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-line bg-obsidian p-4"><p className="text-xs text-muted">Fidelización</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Gift size={15} className="text-brass"/>{selected.loyalty_points.toLocaleString("es-EC")} puntos</p><p className="mt-1 text-xs text-muted">1 punto por cada $1 pagado, sin redondear hacia arriba. {selected.visit_count} visitas.</p></div><div className="rounded-xl border border-line bg-obsidian p-4"><p className="text-xs text-muted">Barbero favorito</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Clock3 size={14} className="text-brass"/>{selected.preferred_barber_id ?? "Sin asignar"}</p><p className="mt-1 text-xs text-muted">ID de cliente · {selected.id}</p></div></div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-line bg-obsidian p-4"><p className="text-xs text-muted">Fidelización</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Gift size={15} className="text-brass"/>{selected.loyalty_points.toLocaleString("es-EC")} puntos</p><p className="mt-1 text-xs text-muted">{currentLoyaltyRule?`${Number(currentLoyaltyRule.points_per_dollar).toLocaleString("es-EC")} punto(s) por cada $1 de subtotal elegible, sin impuestos ni propina.`:"Consultando la regla vigente."} {selected.visit_count} visitas.</p></div><div className="rounded-xl border border-line bg-obsidian p-4"><p className="text-xs text-muted">Barbero favorito</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Clock3 size={14} className="text-brass"/>{selected.preferred_barber_id ?? "Sin asignar"}</p><p className="mt-1 text-xs text-muted">ID de cliente · {selected.id}</p></div></div>
         <section className="mt-4 rounded-xl border border-line bg-obsidian p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">Movimientos de puntos</h3><p className="mt-1 text-xs text-muted">Registro de compras y ajustes de esta tarjeta.</p></div><button type="button" onClick={() => { void loadClients(); void loadMovementHistory(selected.id); }} className="min-h-10 rounded-lg border border-line px-3 text-xs font-semibold">Actualizar</button></div>{historyLoading ? <p className="mt-4 text-sm text-muted">Cargando movimientos…</p> : movementHistory.length ? <ul className="mt-3 divide-y divide-line">{movementHistory.map((entry) => <li key={entry.id} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm">{entry.description}</p><p className="mt-1 text-xs text-muted">{new Date(entry.created_at).toLocaleString("es-EC")}</p></div><span className={`text-sm font-bold ${entry.points > 0 ? "text-electric" : "text-red-300"}`}>{entry.points > 0 ? "+" : ""}{entry.points} pts</span></li>)}</ul> : <p className="mt-4 text-sm text-muted">Aún no hay movimientos. Los puntos de compras registradas aparecen después del cobro.</p>}</section>
         {isOwner && !demoMode && <form onSubmit={(event) => void adjustPoints(event)} className="mt-4 rounded-xl border border-brass/20 bg-brass/[.04] p-4"><h3 className="text-sm font-semibold">Ajuste manual del dueño</h3><p className="mt-1 text-xs leading-5 text-muted">El motivo se guarda en el historial. Usa un valor negativo para descontar puntos; el saldo no puede quedar bajo cero.</p><div className="mt-3 grid gap-3 sm:grid-cols-[.55fr_1fr_auto]"><label className="text-xs text-muted">Puntos (+ / −)<input required type="number" step="1" value={adjustmentPoints} onChange={(event) => setAdjustmentPoints(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-obsidian px-3 text-sm text-white" placeholder="25 o -10"/></label><label className="text-xs text-muted">Motivo<input required minLength={3} maxLength={200} value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-obsidian px-3 text-sm text-white" placeholder="Corrección por compra duplicada"/></label><button disabled={busy} className="mt-auto min-h-11 rounded-lg bg-brass px-4 text-xs font-bold text-obsidian disabled:opacity-50">{busy ? "Guardando…" : "Registrar ajuste"}</button></div></form>}
         <div className="mt-4 rounded-xl border border-brass/15 bg-brass/[.04] p-4"><p className="text-xs font-semibold uppercase tracking-wider text-brass">Nota técnica</p><p className="mt-2 text-sm leading-6 text-stone-300">{selected.technical_notes || "Sin notas"}</p></div>

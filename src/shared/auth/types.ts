@@ -1,7 +1,7 @@
 export const USER_ROLES = ["SUPER_ADMIN", "RECEPCION", "BARBER", "CLIENT"] as const;
 export type UserRole = typeof USER_ROLES[number];
 
-export type TenantCapability = "reception" | "chair" | "checkout" | "inventory" | "client_pwa" | "crm" | "staff" | "analytics" | "appointments" | "catalog";
+export type TenantCapability = "reception" | "chair" | "checkout" | "inventory" | "client_pwa" | "crm" | "staff" | "analytics" | "appointments" | "catalog" | "exports";
 
 export interface TenantSubscription {
   planCode: string;
@@ -9,6 +9,11 @@ export interface TenantSubscription {
   capabilities: TenantCapability[];
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  graceDays: number;
+  monthlyPrice: number;
+  supportWhatsapp: string;
+  supportTelegram: string | null;
+  exportsEnabledDuringTrial: boolean;
 }
 
 export interface User {

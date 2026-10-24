@@ -21,13 +21,21 @@ interface TenantSubscriptionRow {
   current_period_end: string | null;
 }
 
+interface SaaSSettingsRow {
+  grace_days: number;
+  monthly_price: number;
+  whatsapp_number: string;
+  telegram_url: string | null;
+  exports_enabled_during_trial: boolean;
+}
+
 interface TenantRow {
   saas_subscriptions: TenantSubscriptionRow | TenantSubscriptionRow[] | null;
 }
 
 const PLAN_CAPABILITIES: Record<string, TenantCapability[]> = {
-  BASIC: ["reception", "chair", "checkout", "inventory", "client_pwa", "crm", "appointments", "catalog"],
-  PRO: ["reception", "chair", "checkout", "inventory", "client_pwa", "crm", "appointments", "catalog", "staff", "analytics"],
+  BASIC: ["reception", "chair", "checkout", "inventory", "client_pwa", "crm", "appointments", "catalog", "analytics", "exports"],
+  PRO: ["reception", "chair", "checkout", "inventory", "client_pwa", "crm", "appointments", "catalog", "staff", "analytics", "exports"],
 };
 
 interface AuthState {
@@ -76,16 +84,17 @@ async function createAppSession(authSession: Session | null): Promise<AuthSessio
   const subscriptionRows = tenant?.saas_subscriptions;
   const rawSubscription = Array.isArray(subscriptionRows) ? subscriptionRows[0] ?? null : subscriptionRows;
 
-  const { data: saasAdminData, error: saasAdminError } = await supabase
+  const [{ data: saasAdminData, error: saasAdminError }, { data: settingsData, error: settingsError }] = await Promise.all([supabase
     .from("saas_admins")
     .select("profile_id")
     .eq("profile_id", authSession.user.id)
-    .maybeSingle();
+    .maybeSingle(), supabase.from("saas_settings").select("grace_days,monthly_price,whatsapp_number,telegram_url,exports_enabled_during_trial").eq("singleton", true).maybeSingle<SaaSSettingsRow>()]);
   // Keep ordinary logins working when this optional SaaS table has not been
   // installed yet. Other query failures still indicate a real access problem.
   if (saasAdminError && !/Could not find the table .*saas_admins.*schema cache/i.test(saasAdminError.message)) {
     throw new Error(`No se pudo verificar el acceso administrativo SaaS: ${saasAdminError.message}`);
   }
+  if (settingsError) throw new Error(`No se pudo consultar la configuración de suscripción: ${settingsError.message}`);
 
   const user: User = {
     id: authSession.user.id,
@@ -104,6 +113,11 @@ async function createAppSession(authSession: Session | null): Promise<AuthSessio
     capabilities: PLAN_CAPABILITIES[rawSubscription.plan.toUpperCase()] ?? [],
     trialEndsAt: rawSubscription.status === "trialing" ? rawSubscription.current_period_end : null,
     currentPeriodEndsAt: rawSubscription.status === "active" ? rawSubscription.current_period_end : null,
+    graceDays: settingsData?.grace_days ?? 0,
+    monthlyPrice: Number(settingsData?.monthly_price ?? 15),
+    supportWhatsapp: settingsData?.whatsapp_number ?? "593989253675",
+    supportTelegram: settingsData?.telegram_url ?? null,
+    exportsEnabledDuringTrial: settingsData?.exports_enabled_during_trial ?? true,
   } : null;
 
   return {
@@ -123,8 +137,9 @@ export function hasTenantCapability(session: AuthSession | null, capability: Ten
   const status = session.subscription?.status;
   const subscription = session.subscription;
   if (!session.user.tenantId || !subscription || (status !== "active" && status !== "trialing")) return false;
+  if (capability === "exports" && status === "trialing" && !subscription.exportsEnabledDuringTrial) return false;
   const expiration = status === "trialing" ? subscription.trialEndsAt : subscription.currentPeriodEndsAt;
-  if (expiration && new Date(expiration).getTime() <= Date.now()) return false;
+  if (expiration && new Date(expiration).getTime() + subscription.graceDays * 86_400_000 <= Date.now()) return false;
   return subscription.capabilities.includes(capability);
 }
 

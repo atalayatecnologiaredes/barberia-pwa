@@ -5,6 +5,7 @@ import { supabase } from "../../shared/lib/supabaseClient";
 import { errorMessage } from "../../shared/lib/errors";
 import { PageHeading } from "../../shared/ui/PageHeading";
 import { useTenantRealtime } from "../../shared/hooks/useTenantRealtime";
+import LoyaltyProgramSettings from "./LoyaltyProgramSettings";
 
 const fieldClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-obsidian px-4 text-stone-100 outline-none focus:border-brass disabled:opacity-60";
 const planNames: Record<string, string> = { basic: "Básico", pro: "Pro" };
@@ -114,7 +115,7 @@ export default function TenantSettingsPage() {
     <PageHeading
       eyebrow="Administración"
       title="Configuración"
-      description="Administra los datos comerciales, fiscales y del recibo de tu barbería."
+      description="Administra los datos comerciales, fiscales, el recibo y el programa de fidelidad de tu barbería."
       action={<button onClick={() => void loadTenant()} disabled={loading || saving} className="flex min-h-11 items-center gap-2 rounded-xl border border-line px-3 text-sm disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""}/>Actualizar</button>}
     />
 
@@ -136,7 +137,9 @@ export default function TenantSettingsPage() {
         <div className="mt-5 flex justify-end"><button disabled={saving || loading || !tenantId || !!error} className="min-h-12 rounded-xl bg-brass px-4 text-sm font-bold text-obsidian disabled:opacity-50">{saving ? "Guardando…" : "Guardar cambios"}</button></div>
       </form>
 
-      <section className="rounded-2xl border border-line bg-panel p-5 md:p-6"><div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brass/10 text-brass"><Sparkles size={19}/></span><div><h2 className="font-semibold">Plan y suscripción</h2><p className="mt-1 text-sm text-muted">Plan: <strong className="text-stone-200">{planName}</strong> · Estado: <strong className="text-stone-200">{statusName}</strong></p>{nextDate && <p className="mt-1 text-sm text-muted">{subscription?.status === "trialing" ? "Fin de prueba" : "Próximo vencimiento"}: {new Date(nextDate).toLocaleDateString("es-EC")}</p>}<p className="mt-2 text-xs text-muted">La administración de planes y pagos todavía no está disponible en este panel.</p></div></div></section>
+      <LoyaltyProgramSettings />
+
+      <section className="rounded-2xl border border-line bg-panel p-5 md:p-6"><div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brass/10 text-brass"><Sparkles size={19}/></span><div className="min-w-0 flex-1"><h2 className="font-semibold">Plan y suscripción</h2><p className="mt-1 text-sm text-muted">Plan: <strong className="text-stone-200">{planName}</strong> · Estado: <strong className="text-stone-200">{statusName}</strong></p>{nextDate && <p className="mt-1 text-sm text-muted">{subscription?.status === "trialing" ? "Fin de prueba" : "Próximo vencimiento"}: {new Date(nextDate).toLocaleDateString("es-EC")}</p>}<p className="mt-2 text-sm text-muted">{new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD" }).format(subscription?.monthlyPrice ?? 15)} por periodo mensual. El pago se confirma manualmente por soporte.</p><div className="mt-4 flex flex-wrap gap-2"><a href={`https://wa.me/${(subscription?.supportWhatsapp ?? "593989253675").replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, necesito renovar la suscripción de ${shopName}.`)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg bg-brass px-3 text-xs font-bold text-obsidian">Contactar por WhatsApp</a>{subscription?.supportTelegram && <a href={subscription.supportTelegram} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg border border-line px-3 text-xs font-semibold">Telegram</a>}</div></div></div></section>
     </>}
   </div>;
 }
