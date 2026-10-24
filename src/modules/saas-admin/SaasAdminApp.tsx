@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Building2, CircleDollarSign, Clock3, RefreshCw, ShieldCheck, ShieldOff, UsersRound, CreditCard, Save, MessageCircle } from "lucide-react";
+import { Building2, CircleDollarSign, Clock3, RefreshCw, ShieldCheck, ShieldOff, UsersRound, CreditCard, Save, MessageCircle, LogOut } from "lucide-react";
 import { supabase } from "../../shared/lib/supabaseClient";
 import { useAuthStore } from "../../shared/auth/AuthStore";
 
@@ -73,6 +73,7 @@ function formatUsd(amount: number) {
 
 export default function SaasAdminApp() {
   const actorId = useAuthStore((state) => state.session?.user.id);
+  const logout = useAuthStore((state) => state.logout);
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [settings, setSettings] = useState<SaaSSettings | null>(null);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -84,7 +85,15 @@ export default function SaasAdminApp() {
   const [savingPayment, setSavingPayment] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function signOut() {
+    setSigningOut(true);
+    const { error: logoutError } = await logout();
+    if (logoutError) setError(`No se pudo cerrar la sesión: ${logoutError}`);
+    setSigningOut(false);
+  }
 
   const loadTenants = useCallback(async () => {
     setLoading(true);
@@ -190,7 +199,7 @@ export default function SaasAdminApp() {
 
   return <div className="min-h-screen bg-obsidian px-4 py-6 text-stone-100 sm:px-7 lg:px-10">
     <div className="mx-auto max-w-7xl">
-      <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.22em] text-brass">Consola SaaS</p><h1 className="mt-2 text-3xl font-semibold">Administración de barberías</h1><p className="mt-2 text-sm text-muted">Pruebas, pagos manuales, suscripciones y acceso a la plataforma.</p></div><button onClick={() => { void loadTenants(); void loadBilling().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "No se pudo actualizar.")); }} disabled={loading} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-line bg-panel px-4 text-sm font-semibold hover:border-brass/50 disabled:opacity-50"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/>Actualizar</button></header>
+      <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.22em] text-brass">Consola SaaS</p><h1 className="mt-2 text-3xl font-semibold">Administración de barberías</h1><p className="mt-2 text-sm text-muted">Pruebas, pagos manuales, suscripciones y acceso a la plataforma.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => { void loadTenants(); void loadBilling().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "No se pudo actualizar.")); }} disabled={loading || signingOut} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-line bg-panel px-4 text-sm font-semibold hover:border-brass/50 disabled:opacity-50"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/>Actualizar</button><button onClick={() => void signOut()} disabled={signingOut} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-line bg-panel px-4 text-sm font-semibold text-stone-300 hover:border-red-400/40 hover:text-red-200 disabled:opacity-50"><LogOut size={16}/>{signingOut ? "Cerrando sesión…" : "Cerrar sesión"}</button></div></header>
 
       <section className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(({ label, value, icon: Icon, detail }) => <article key={label} className="rounded-2xl border border-line bg-panel p-5"><div className="flex items-center justify-between"><span className="text-sm text-muted">{label}</span><Icon size={19} className="text-brass"/></div><p className="mt-4 text-3xl font-bold">{value}</p><p className="mt-1 text-xs text-muted">{detail}</p></article>)}</section>
 
