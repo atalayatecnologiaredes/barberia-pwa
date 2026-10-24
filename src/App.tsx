@@ -20,6 +20,7 @@ const RegisterTenantPage = lazy(() => import("./modules/auth/RegisterTenantPage"
 const TenantSettingsPage = lazy(() => import("./modules/tenant-settings/TenantSettingsPage"));
 const AppointmentsPage = lazy(() => import("./modules/appointments/AppointmentsPage"));
 const CatalogPage = lazy(() => import("./modules/catalog/CatalogPage"));
+const LandingPage = lazy(() => import("./modules/marketing/LandingPage"));
 
 function RouteFallback() {
   return <main className="grid min-h-screen place-items-center bg-obsidian text-stone-100" aria-live="polite"><div className="text-center"><span className="mx-auto block h-9 w-9 animate-spin rounded-full border-2 border-brass/30 border-t-brass"/><p className="mt-4 text-sm text-muted">Cargando módulo…</p></div></main>;
@@ -43,8 +44,8 @@ export default function App() {
     <Route path="/register" element={<RegisterTenantPage/>}/>
     <Route path="/saas-admin" element={<ProtectedRoute allowed={allRoles} requireSaasAdmin><SaasAdminApp/></ProtectedRoute>}/>
     <Route path="/client-pwa" element={<ClientApp/>}/>
-    <Route path="/" element={<ProtectedRoute allowed={allRoles}><AppLayout/></ProtectedRoute>}>
-      <Route index element={<HomeRedirect/>}/>
+    <Route path="/" element={<LandingPage/>}/>
+    <Route element={<ProtectedRoute allowed={allRoles}><AppLayout/></ProtectedRoute>}>
       <Route path="reception" element={<ProtectedRoute allowed={frontDeskRoles} capability="reception"><ReceptionApp/></ProtectedRoute>}/>
       <Route path="appointments" element={<ProtectedRoute allowed={frontDeskRoles} capability="appointments"><AppointmentsPage/></ProtectedRoute>}/>
       <Route path="tv" element={<ProtectedRoute allowed={frontDeskRoles} capability="reception"><ReceptionApp/></ProtectedRoute>}/>
