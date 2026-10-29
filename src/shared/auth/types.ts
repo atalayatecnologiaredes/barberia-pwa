@@ -29,6 +29,7 @@ export interface User {
 
 export interface AuthSession {
   user: User;
+  tenantName: string | null;
   accessToken: string;
   expiresAt: number;
   subscription: TenantSubscription | null;

@@ -30,6 +30,7 @@ interface SaaSSettingsRow {
 }
 
 interface TenantRow {
+  name: string;
   saas_subscriptions: TenantSubscriptionRow | TenantSubscriptionRow[] | null;
 }
 
@@ -122,6 +123,7 @@ async function createAppSession(authSession: Session | null): Promise<AuthSessio
 
   return {
     user,
+    tenantName: tenant?.name ?? null,
     accessToken: authSession.access_token,
     expiresAt: (authSession.expires_at ?? 0) * 1000,
     subscription,
